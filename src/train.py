@@ -7,6 +7,7 @@ import pickle
 import csv
 import numpy as np
 import pygame
+import matplotlib.pyplot as plt
 from pygame.locals import *
 
 sys.path.append(os.getcwd())
@@ -36,7 +37,10 @@ BACKGROUND = [288, 512]
 
 
 def main():
-    global HITMASKS, ITERATIONS, VERBOSE, flappIA
+    global HITMASKS, ITERATIONS, VERBOSE, UPDATE_ITERATIONS, flappIA, score_history, states_history
+    states_history = []
+    score_history = []
+    UPDATE_ITERATIONS = 1000
     train_iterations = 10000
     # alguns argumentos que usamos para poder acompanhar melhor o treino do flappyIA
     parser = argparse.ArgumentParser("train.py")
@@ -49,15 +53,15 @@ def main():
     args = parser.parse_args()
     ITERATIONS = args.iter
     VERBOSE = args.verbose
-
+    return_history = []
     # carrega as hitmasks tiradas do outro jogo, já 	que não usamos sprites para identificar
     with open("data/hitmasks_data.pkl", "rb") as input:
         HITMASKS = pickle.load(input)
 
     while True:
         movementInfo = showWelcomeAnimation()
-        crashInfo = mainGame(movementInfo)
-        show_terminal(crashInfo)
+        crashInfo, return_history = mainGame(movementInfo, return_history)
+        show_terminal(crashInfo, return_history)
 
 
 def showWelcomeAnimation():
@@ -79,7 +83,7 @@ def showWelcomeAnimation():
     }
 
 
-def mainGame(movementInfo):
+def mainGame(movementInfo, return_history):
     score = playerIndex = loopIter = 0
     playerIndexGen = movementInfo["playerIndexGen"]
 
@@ -115,12 +119,8 @@ def mainGame(movementInfo):
     playerFlapped = False  # True when player flaps
 
     while True:
-        if -playerx + lowerPipes[0]["x"] > -30:
-            myPipe = lowerPipes[0]
-        else:
-            myPipe = lowerPipes[1]
 
-        if flappIA.act(-playerx + myPipe["x"], -playery + myPipe["y"], playerVelY):
+        if flappIA.act(playerx, playery, playerVelY, lowerPipes):
             if playery > -2 * PLAYER[IM_HEIGTH]:
                 playerVelY = playerFlapAcc
                 playerFlapped = True
@@ -132,16 +132,17 @@ def mainGame(movementInfo):
         if crashTest[0]:
             # Update the q scores
             flappIA.update_scores(update_values=False)
-
+            return_history.append(flappIA.discounted_cumulative_reward)
+            score_history.append(score)
             return {
-                "y": playery,
-                "groundCrash": crashTest[1],
-                "basex": basex,
-                "upperPipes": upperPipes,
-                "lowerPipes": lowerPipes,
-                "score": score,
-                "playerVelY": playerVelY,
-            }
+                       "y": playery,
+                       "groundCrash": crashTest[1],
+                       "basex": basex,
+                       "upperPipes": upperPipes,
+                       "lowerPipes": lowerPipes,
+                       "score": score,
+                       "playerVelY": playerVelY,
+                   }, return_history
 
         # check for score
         playerMidPos = playerx + PLAYER[IM_WIDTH] / 2
@@ -181,12 +182,15 @@ def mainGame(movementInfo):
             lowerPipes.pop(0)
 
 
-
-def show_terminal(crashInfo):
+def show_terminal(crashInfo, return_history):
     if VERBOSE:
         score = crashInfo["score"]
         print(str(flappIA.games - 1) + "," + str(score))
 
+    if flappIA.games % UPDATE_ITERATIONS == 0:
+        flappIA.update_values(force=True)
+        states_history.append(len(flappIA.q_values))
+        plot_results(return_history)
     if flappIA.games == (ITERATIONS):
         flappIA.update_values(force=True)
         sys.exit()
@@ -267,6 +271,36 @@ def pixelCollision(rect1, rect2, hitmask1, hitmask2):
             if hitmask1[x1 + x][y1 + y] and hitmask2[x2 + x][y2 + y]:
                 return True
     return False
+
+
+def plot_results(return_history):
+    """
+        Plots the results of the optimization.
+    """
+    fig_format = 'png'
+    plt.figure()
+    plt.plot(return_history)
+    plt.xlabel('Iteration')
+    plt.ylabel('Return')
+    plt.title('Return (Discounted Cumulative Reward) Convergence')
+    plt.grid()
+    plt.savefig('return_convergence.%s' % fig_format, format=fig_format)
+
+    plt.figure()
+    plt.plot(score_history)
+    plt.xlabel('Iteration')
+    plt.ylabel('Score')
+    plt.title('Return (Score) Convergence')
+    plt.grid()
+    plt.savefig('score_convergence.%s' % fig_format, format=fig_format)
+
+    plt.figure()
+    plt.plot(states_history)
+    plt.xlabel('Iteration')
+    plt.ylabel('States passes')
+    plt.title('Return (States passed) Convergence')
+    plt.grid()
+    plt.savefig('states.%s' % fig_format, format=fig_format)
 
 
 if __name__ == "__main__":

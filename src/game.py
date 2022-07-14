@@ -204,7 +204,7 @@ def main_game(movement_info):
                 pygame.quit()
                 sys.exit()
 
-        if flappyIA.act(-player_x + my_pipe["x"], -player_y + my_pipe["y"], playerVelY):
+        if flappyIA.act(player_x, player_y , playerVelY, lowerPipes):
             if player_y > -2 * IMAGES['player'][0].get_height():
                 playerVelY = playerFlapAcc
                 playerFlapped = True
